@@ -1,4 +1,5 @@
+flask
+requests
+feedparser
 cohere
 python-telegram-bot
-feedparser
-flask
