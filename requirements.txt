@@ -1,0 +1,3 @@
+cohere
+python-telegram-bot
+feedparser
