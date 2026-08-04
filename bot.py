@@ -9,12 +9,12 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 
 # --- 1. المفاتيح والربط ---
 GROQ_API_KEY = "Gsk_8jcKoWjAUIi786DcofJOWGdyb3FY9NJiWPfKhfEiIQkQrvUVtZDK"
-TELEGRAM_BOT_TOKEN = "8995537745:AAGPN2CMTSvFnqBIH6B7KQ28kzb-18yOBb0"
+TELEGRAM_BOT_TOKEN = "8995537745:AAGPN2CMTsvFnqBIH687KQ28kzb-18y0Bb0"
 TELEGRAM_CHAT_ID = "6935893078"
 
 client = Groq(api_key=GROQ_API_KEY)
 
-NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%84%D8%B3%D9%88%D9%82+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A&hl=ar&gl=SA&ceid=SA:ar"
+NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%8 للسوق+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A&hl=ar&gl=SA&ceid=SA:ar"
 seen_news_links = set()
 
 # --- 2. خادم Flask لإبقاء البوت شغالاً 24/7 ---
@@ -32,22 +32,24 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 3. دالة التحليل الذكي عبر Groq ---
+# --- 3. دالة التحليل الذكي عبر Groq (المحدثة والآمنة) ---
 def get_groq_response(prompt_text):
     try:
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "أنت مساعد مالي ومحلل محترف لسوق الأسهم السعودي."},
+                {"role": "system", "content": "أنت مساعد مالي ومحلل محترف لسوق الأسهم السعودي. أجب باختصار واحترافية."},
                 {"role": "user", "content": prompt_text}
             ],
             temperature=0.7,
             max_tokens=600,
         )
-        return completion.choices[0].message.content.strip()
+        if completion.choices and completion.choices[0].message:
+            return completion.choices[0].message.content.strip()
+        return "عذراً، لم أتمكن من الحصول على رد من المحرك."
     except Exception as e:
-        print(f"Groq Error: {e}")
-        return "عذراً، واجهت مشكلة في الاتصال بمحرك الذكاء الاصطناعي."
+        print(f"Groq Error Detail: {e}")
+        return f"عذراً، حدث خطأ تقني أثناء الاتصال: {str(e)}"
 
 # --- 4. فحص الأخبار الذكي ---
 async def check_news(context: ContextTypes.DEFAULT_TYPE):
@@ -99,7 +101,7 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(check_news, interval=7200, first=10)
 
-    print("Bot is running with Groq...")
+    print("Bot is running with Groq securely...")
     application.run_polling()
 
 if __name__ == '__main__':
