@@ -4,6 +4,8 @@ import feedparser
 from groq import Groq
 from flask import Flask
 import threading
+import requests
+from bs4cript import BeautifulSoup  # سنستخدم requests و BeautifulSoup للبحث الحي
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
@@ -14,7 +16,8 @@ TELEGRAM_CHAT_ID = "6935893078"
 
 client = Groq(api_key=GROQ_API_KEY)
 
-NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%8 للسوق+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A&hl=ar&gl=SA&ceid=SA:ar"
+# أخبار السوق السعودي اللحظية من جوجل نيوز RSS
+NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%84%D8%B3%D9%88%D9%82+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A+OR+%D8%AA%D8%AF%D8%A7%D9%88%D9%84&hl=ar&gl=SA&ceid=SA:ar"
 seen_news_links = set()
 
 # --- 2. خادم Flask لإبقاء البوت شغالاً 24/7 ---
@@ -22,7 +25,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "I am alive!"
+    return "I am alive and searching live!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -32,17 +35,53 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 3. دالة التحليل الذكي عبر Groq (المحدثة والآمنة) ---
-def get_groq_response(prompt_text):
+# --- 3. دالة جلب البيانات والبحث الحي من الإنترنت ---
+def fetch_live_market_data(query):
     try:
+        # البحث عن أحدث الأخبار والبيانات المتعلقة بطلب المستخدم عبر جوجل RSS مباشرة
+        search_url = f"https://news.google.com/rss/search?q={query}+السوق+السعودي+تداول&hl=ar&gl=SA&ceid=SA:ar"
+        feed = feedparser.parse(search_url)
+        
+        live_info = ""
+        count = 0
+        for entry in feed.entries[:3]: # نأخذ أحدث 3 نتائج حية
+            live_info += f"- العنوان: {entry.title}\n  التفاصيل: {entry.get('summary', '')}\n\n"
+            count += 1
+            
+        if count > 0:
+            return f"معلومات حية تم جلبها من السوق:\n{live_info}"
+        return "لم يتم العثور على بيانات حية حديثة جداً لهذا الطلب، اعتمد على تحليلك العام."
+    except Exception as e:
+        print(f"Scraping Error: {e}")
+        return ""
+
+# --- 4. دالة التحليل الذكي المدمجة بالبحث الحي عبر Groq ---
+def get_groq_smart_response(user_text):
+    try:
+        # جلب بيانات حية مرتبطة بسؤال المستخدم أولاً
+        live_data = fetch_live_market_data(user_text)
+        
+        system_prompt = """
+أنت مساعد مالي ومحلل محترف وخبير في سوق الأسهم السعودي (تداول).
+مهمتك تحليل الأسهم وتقديم المشورة بدقة استناداً إلى البيانات الحية المسترجعة إن وجدت، وبأسلوب مباشر، احترافي، ومرتب مع إيموجي مناسبة.
+"""
+        user_prompt = f"""
+سؤال المستخدم: {user_text}
+
+بيانات حية حديثة من السوق تخص الطلب:
+{live_data}
+
+قم بتحليل الطلب والإجابة عليه بدقة واحترافية عالية للمستثمر.
+"""
+
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "أنت مساعد مالي ومحلل محترف لسوق الأسهم السعودي. أجب باختصار واحترافية."},
-                {"role": "user", "content": prompt_text}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
             temperature=0.7,
-            max_tokens=600,
+            max_tokens=800,
         )
         if completion.choices and completion.choices[0].message:
             return completion.choices[0].message.content.strip()
@@ -51,11 +90,11 @@ def get_groq_response(prompt_text):
         print(f"Groq Error Detail: {e}")
         return f"عذراً، حدث خطأ تقني أثناء الاتصال: {str(e)}"
 
-# --- 4. فحص الأخبار الذكي ---
+# --- 5. فحص الأخبار التلقائي العاجل ---
 async def check_news(context: ContextTypes.DEFAULT_TYPE):
     try:
         feed = feedparser.parse(NEWS_RSS_URL)
-        for entry in feed.entries[:3]:
+        for entry in feed.entries[:2]:
             link = entry.link
             if link not in seen_news_links:
                 seen_news_links.add(link)
@@ -63,34 +102,42 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE):
                 summary = entry.get('summary', '')
 
                 prompt = f"""
-قيم هذا الخبر الاقتصادي الخاص بالسوق السعودي بدقة:
+قيم هذا الخبر الاقتصادي العاجل الخاص بالسوق السعودي بدقة:
 العنوان: {title}
 التفاصيل: {summary}
 
 إذا كان الخبر عادياً أو غير مؤثر، اكتب فقط كلمة "تجاهل".
-إذا كان مهماً ومؤثراً على المستثمرين، اكتب تحليلاً مختصراً ومرتباً مع إيموجي مناسب.
+إذا كان مهماً ومؤثراً على المستثمرين، اكتب تحليلاً مختصراً ومرتباً يوضح تأثيره على السوق أو الشركات مع إيموجي مناسب.
 """
-                analysis = get_groq_response(prompt)
+                # تحليل الخبر عبر محرك الذكاء
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=400,
+                )
+                analysis = completion.choices[0].message.content.strip()
                 
                 if "تجاهل" not in analysis:
                     await context.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID, 
-                        text=f"🚨 **تنبيه استثماري مهم:**\n\n{analysis}\n\n🔗 الرابط: {link}",
+                        text=f"🚨 **تنبيه استثماري حي وعاجل:**\n\n{analysis}\n\n🔗 الرابط: {link}",
                         parse_mode="Markdown"
                     )
     except Exception as e:
         print(f"Error in check_news: {e}")
 
-# --- 5. الرد المباشر على رسائل المستخدم في التليجرام ---
+# --- 6. الرد المباشر على رسائل المستخدم في التليجرام ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.message.chat_id
 
-    prompt = f"المستخدم سألك التالي: '{user_text}'. أجب عليه بأسلوب مالي دقيق ومباشر ومفيد لمستثمر في السوق السعودي."
-    reply_text = get_groq_response(prompt)
+    # إعلام المستخدم أن البوت يبحث في السوق حيّاً
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    reply_text = get_groq_smart_response(user_text)
     await context.bot.send_message(chat_id=chat_id, text=reply_text)
 
-# --- 6. التشغيل الأساسي ---
+# --- 7. التشغيل الأساسي ---
 def main():
     keep_alive()
 
@@ -101,7 +148,7 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(check_news, interval=7200, first=10)
 
-    print("Bot is running with Groq securely...")
+    print("Bot is running with Live Market Search & Groq...")
     application.run_polling()
 
 if __name__ == '__main__':
