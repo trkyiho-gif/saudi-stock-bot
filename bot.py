@@ -5,7 +5,7 @@ from groq import Groq
 from flask import Flask
 import threading
 import requests
-from bs4cript import BeautifulSoup  # سنستخدم requests و BeautifulSoup للبحث الحي
+from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
@@ -16,8 +16,7 @@ TELEGRAM_CHAT_ID = "6935893078"
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# أخبار السوق السعودي اللحظية من جوجل نيوز RSS
-NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%84%D8%B3%D9%88%D9%82+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A+OR+%D8%AA%D8%AF%D8%A7%D9%88%D9%84&hl=ar&gl=SA&ceid=SA:ar"
+NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%8 للسوق+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A+OR+%D8%AA%D8%AF%D8%A7%D9%88%D9%84&hl=ar&gl=SA&ceid=SA:ar"
 seen_news_links = set()
 
 # --- 2. خادم Flask لإبقاء البوت شغالاً 24/7 ---
@@ -38,13 +37,12 @@ def keep_alive():
 # --- 3. دالة جلب البيانات والبحث الحي من الإنترنت ---
 def fetch_live_market_data(query):
     try:
-        # البحث عن أحدث الأخبار والبيانات المتعلقة بطلب المستخدم عبر جوجل RSS مباشرة
         search_url = f"https://news.google.com/rss/search?q={query}+السوق+السعودي+تداول&hl=ar&gl=SA&ceid=SA:ar"
         feed = feedparser.parse(search_url)
         
         live_info = ""
         count = 0
-        for entry in feed.entries[:3]: # نأخذ أحدث 3 نتائج حية
+        for entry in feed.entries[:3]:
             live_info += f"- العنوان: {entry.title}\n  التفاصيل: {entry.get('summary', '')}\n\n"
             count += 1
             
@@ -58,7 +56,6 @@ def fetch_live_market_data(query):
 # --- 4. دالة التحليل الذكي المدمجة بالبحث الحي عبر Groq ---
 def get_groq_smart_response(user_text):
     try:
-        # جلب بيانات حية مرتبطة بسؤال المستخدم أولاً
         live_data = fetch_live_market_data(user_text)
         
         system_prompt = """
@@ -109,7 +106,6 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE):
 إذا كان الخبر عادياً أو غير مؤثر، اكتب فقط كلمة "تجاهل".
 إذا كان مهماً ومؤثراً على المستثمرين، اكتب تحليلاً مختصراً ومرتباً يوضح تأثيره على السوق أو الشركات مع إيموجي مناسب.
 """
-                # تحليل الخبر عبر محرك الذكاء
                 completion = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": prompt}],
@@ -131,7 +127,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.message.chat_id
 
-    # إعلام المستخدم أن البوت يبحث في السوق حيّاً
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     reply_text = get_groq_smart_response(user_text)
