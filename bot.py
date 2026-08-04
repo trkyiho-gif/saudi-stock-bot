@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # --- 1. المفاتيح والربط ---
-COHERE_API_KEY = "cohere_CAJZTEe4eP8HVVmaFbwFttf3VK1vQGxKBO9NshBZ3mlHHv
+COHERE_API_KEY =COHERE_API_KEY = "cohere_CAJZTEe4eP8HVWmaFbwFftf3VK1VQgXKBO9NshBZ3m1HHv"
 TELEGRAM_BOT_TOKEN ="8995537745:AAGPN2CMTSvFnqBIH6B7KQ28kzb-18yOBb0
 TELEGRAM_CHAT_ID = "6935893078
 co = cohere.Client(COHERE_API_KEY)
