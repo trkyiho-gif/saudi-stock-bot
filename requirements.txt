@@ -1,5 +1,5 @@
 flask
 feedparser
-cohere
+groq
 python-telegram-bot[job-queue]
 requests
