@@ -1,5 +1,5 @@
 flask
-requests
 feedparser
 cohere
-python-telegram-bot
+python-telegram-bot[job-queue]
+requests
