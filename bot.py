@@ -1,20 +1,20 @@
 import os
 import asyncio
 import feedparser
-import cohere
+from groq import Groq
 from flask import Flask
 import threading
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # --- 1. المفاتيح والربط ---
-COHERE_API_KEY = "cohere_CAJZTEe4eP8HVWmaFbwFftf3VK1VQgXKBO9NshBZ3m1HHv"
-TELEGRAM_BOT_TOKEN = "8995537745:AAGPN2CMTSvFnqBIH6B7KQ28kzb-18yOBb0"
+GROQ_API_KEY = "Gsk_8jcKoWjAUIi786DcofJOWGdyb3FY9NJiWPfKhfEiIQkQrvUVtZDK"
+TELEGRAM_BOT_TOKEN = "8995537745:AAGPN2CMTsvFnqBIH687KQ28kzb-18y0Bb0"
 TELEGRAM_CHAT_ID = "6935893078"
 
-co = cohere.Client(COHERE_API_KEY)
+client = Groq(api_key=GROQ_API_KEY)
 
-NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%لل+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%8 للسوق+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A&hl=ar&gl=SA&ceid=SA:ar"
+NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%84%D8%B3%D9%88%D9%82+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A&hl=ar&gl=SA&ceid=SA:ar"
 seen_news_links = set()
 
 # --- 2. خادم Flask لإبقاء البوت شغالاً 24/7 ---
@@ -32,21 +32,24 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 3. دالة التحليل الذكي عبر Cohere Generate ---
-def get_cohere_response(prompt_text):
+# --- 3. دالة التحليل الذكي عبر Groq ---
+def get_groq_response(prompt_text):
     try:
-        response = co.generate(
-            model='command',
-            prompt=prompt_text,
-            max_tokens=400,
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "أنت مساعد مالي ومحلل محترف لسوق الأسهم السعودي."},
+                {"role": "user", "content": prompt_text}
+            ],
             temperature=0.7,
+            max_tokens=600,
         )
-        return response.generations[0].text.strip()
+        return completion.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Cohere Error: {e}")
+        print(f"Groq Error: {e}")
         return "عذراً، واجهت مشكلة في الاتصال بمحرك الذكاء الاصطناعي."
 
-# --- 4. فحص الأخبار الذكي (يرسل المهم فقط) ---
+# --- 4. فحص الأخبار الذكي ---
 async def check_news(context: ContextTypes.DEFAULT_TYPE):
     try:
         feed = feedparser.parse(NEWS_RSS_URL)
@@ -58,15 +61,14 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE):
                 summary = entry.get('summary', '')
 
                 prompt = f"""
-أنت محلل مالي محترف لسوق الأسهم السعودي. 
-قيم هذا الخبر بدقة:
+قيم هذا الخبر الاقتصادي الخاص بالسوق السعودي بدقة:
 العنوان: {title}
 التفاصيل: {summary}
 
-إذا كان عادياً أو تافهاً، اكتب فقط كلمة "تجاهل".
-إذا كان مهماً جداً (مثل انخفاض حاد، نتائج مالية، توزيع أرباح)، اكتب تحليلاً مختصراً ومرتباً مع إيموجي مناسب.
+إذا كان الخبر عادياً أو غير مؤثر، اكتب فقط كلمة "تجاهل".
+إذا كان مهماً ومؤثراً على المستثمرين، اكتب تحليلاً مختصراً ومرتباً مع إيموجي مناسب.
 """
-                analysis = get_cohere_response(prompt)
+                analysis = get_groq_response(prompt)
                 
                 if "تجاهل" not in analysis:
                     await context.bot.send_message(
@@ -82,12 +84,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.message.chat_id
 
-    prompt = f"""
-أنت مساعد مالي ذكي ومحترف لسوق الأسهم السعودي.
-المستخدم سألك التالي: "{user_text}"
-قم بالرد عليه بأسلوب مالي دقيق، مباشر، ومرتب باللغة العربية لمساعدته في اتخاذ القرار الاستثماري.
-"""
-    reply_text = get_cohere_response(prompt)
+    prompt = f"المستخدم سألك التالي: '{user_text}'. أجب عليه بأسلوب مالي دقيق ومباشر ومفيد لمستثمر في السوق السعودي."
+    reply_text = get_groq_response(prompt)
     await context.bot.send_message(chat_id=chat_id, text=reply_text)
 
 # --- 6. التشغيل الأساسي ---
@@ -101,7 +99,7 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(check_news, interval=7200, first=10)
 
-    print("Bot is running...")
+    print("Bot is running with Groq...")
     application.run_polling()
 
 if __name__ == '__main__':
