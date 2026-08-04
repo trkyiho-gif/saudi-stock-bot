@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # --- 1. المفاتيح والربط ---
-GROQ_API_KEY = "Gsk_8jcKoWjAUIi786DcofJOWGdyb3FY9NJiWPfKhfEiIQkQrvUVtZDK"
+GROQ_API_KEY = "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"
 TELEGRAM_BOT_TOKEN = "8995537745:AAGPN2CMTSvFnqBIH6B7KQ28kzb-18yOBb0"
 TELEGRAM_CHAT_ID = "6935893078"
 
