@@ -9,17 +9,27 @@ from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-# --- 1. المفاتيح والربط ---
-GROQ_API_KEY = "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"
-TELEGRAM_BOT_TOKEN = "8995537745:AAGPN2CMTSvFnqBIH6B7KQ28kzb-18yOBb0"
-TELEGRAM_CHAT_ID = "6935893078"
+# --- 1. المفاتيح والربط (آمنة عبر متغيرات النظام) ---
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 client = Groq(api_key=GROQ_API_KEY)
 
 NEWS_RSS_URL = "https://news.google.com/rss/search?q=%D8%A3%D8%B9%D9%85%D8%A7%D9%84+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A%D8%A9+OR+%D8%A7%D9%8 للسوق+%D8%A7%D9%84%D8%B3%D8%B9%D9%88%D8%AF%D9%8A+OR+%D8%AA%D8%AF%D8%A7%D9%88%D9%84&hl=ar&gl=SA&ceid=SA:ar"
 seen_news_links = set()
 
-# --- 2. خادم Flask لإبقاء البوت شغالاً 24/7 ---
+# --- 2. إعداد الذاكرة المؤقتة (تخزين سجل المحادثة للبوت الشخصي) ---
+chat_history = [
+    {
+        "role": "system",
+        "content": """أنت مساعد مالي ومحلل محترف وخبير في سوق الأسهم السعودي (تداول).
+مهمتك تحليل الأسهم وتقديم المشورة بدقة استناداً إلى البيانات الحية المسترجعة إن وجدت، وبأسلوب مباشر، احترافي، ومرتب مع إيموجي مناسبة.
+تتذكر تفاصيل النقاشات السابقة وتفهم السياق بشكل كامل."""
+    }
+]
+
+# --- 3. خادم Flask لإبقاء البوت شغالاً 24/7 ---
 app = Flask('')
 
 @app.route('/')
@@ -34,7 +44,7 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 3. دالة جلب البيانات والبحث الحي من الإنترنت ---
+# --- 4. دالة جلب البيانات والبحث الحي من الإنترنت ---
 def fetch_live_market_data(query):
     try:
         search_url = f"https://news.google.com/rss/search?q={query}+السوق+السعودي+تداول&hl=ar&gl=SA&ceid=SA:ar"
@@ -53,41 +63,44 @@ def fetch_live_market_data(query):
         print(f"Scraping Error: {e}")
         return ""
 
-# --- 4. دالة التحليل الذكي المدمجة بالبحث الحي عبر Groq ---
+# --- 5. دالة التحليل الذكي المدمجة بالذاكرة والبحث الحي عبر Groq ---
 def get_groq_smart_response(user_text):
     try:
+        # جلب بيانات حية بناءً على طلبك الحالي
         live_data = fetch_live_market_data(user_text)
         
-        system_prompt = """
-أنت مساعد مالي ومحلل محترف وخبير في سوق الأسهم السعودي (تداول).
-مهمتك تحليل الأسهم وتقديم المشورة بدقة استناداً إلى البيانات الحية المسترجعة إن وجدت، وبأسلوب مباشر، احترافي، ومرتب مع إيموجي مناسبة.
-"""
+        # تجهيز رسالة المستخدم مدمجة مع البيانات الحية (وإضافتها لسجل الذاكرة)
         user_prompt = f"""
 سؤال المستخدم: {user_text}
 
 بيانات حية حديثة من السوق تخص الطلب:
 {live_data}
 
-قم بتحليل الطلب والإجابة عليه بدقة واحترافية عالية للمستثمر.
+قم بتحليل الطلب والإجابة عليه بدقة واحترافية عالية للمستثمر مع مراعاة السياق السابق إن وجد.
 """
+        # إضافة رسالة المستخدم الجديدة للسجل
+        chat_history.append({"role": "user", "content": user_prompt})
 
+        # إرسال سجل المحادثة كاملاً لضمان عمل الذاكرة
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=chat_history,
             temperature=0.7,
             max_tokens=800,
         )
+        
         if completion.choices and completion.choices[0].message:
-            return completion.choices[0].message.content.strip()
+            bot_reply = completion.choices[0].message.content.strip()
+            # إضافة رد البوت للسجل لكي يتذكره في المراسلات القادمة
+            chat_history.append({"role": "assistant", "content": bot_reply})
+            return bot_reply
+            
         return "عذراً، لم أتمكن من الحصول على رد من المحرك."
     except Exception as e:
         print(f"Groq Error Detail: {e}")
         return f"عذراً، حدث خطأ تقني أثناء الاتصال: {str(e)}"
 
-# --- 5. فحص الأخبار التلقائي العاجل ---
+# --- 6. فحص الأخبار التلقائي العاجل ---
 async def check_news(context: ContextTypes.DEFAULT_TYPE):
     try:
         feed = feedparser.parse(NEWS_RSS_URL)
@@ -122,7 +135,7 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Error in check_news: {e}")
 
-# --- 6. الرد المباشر على رسائل المستخدم في التليجرام ---
+# --- 7. الرد المباشر على رسائل المستخدم في التليجرام ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.message.chat_id
@@ -132,7 +145,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = get_groq_smart_response(user_text)
     await context.bot.send_message(chat_id=chat_id, text=reply_text)
 
-# --- 7. التشغيل الأساسي ---
+# --- 8. التشغيل الأساسي ---
 def main():
     keep_alive()
 
